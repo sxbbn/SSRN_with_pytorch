@@ -188,7 +188,6 @@ def main():
     train_data = np.zeros((TRAIN_SIZE, 2 * PATCH_LENGTH + 1, 2 * PATCH_LENGTH + 1, INPUT_DIMENSION_CONV))
     test_data = np.zeros((TEST_SIZE, 2 * PATCH_LENGTH + 1, 2 * PATCH_LENGTH + 1, INPUT_DIMENSION_CONV))
 
-
     train_indices, test_indices = sampling(VALIDATION_SPLIT, gt)
     y_train = gt[train_indices] - 1
     # y_train = torch.zeros(len(train_indices),nb_classes).scatter_(1, torch.Tensor(y_train).long().view(-1, 1), 1).to(device)
@@ -216,6 +215,7 @@ def main():
     train_dataloader = DataLoader(train_dataset,batch_size=32,shuffle=True)
     test_dataloader = DataLoader(test_dataset,batch_size=32,shuffle=False)
     model = FDSSN(1,INPUT_DIMENSION_CONV,12)
+    model = model.train(mode=True)
     model = model.apply(weights_init).to(device)
 
     crossentropy = nn.CrossEntropyLoss()
@@ -233,16 +233,29 @@ def main():
             optim.step()
             running_loss += loss.item()
 
-            if i % 50 == 0:
-                test_output = model(x_test).to(device)
-                pred_y = torch.max(test_output, 1)[1].data.numpy()
-                accuracy = float((pred_y == y_test.data.numpy()).astype(int).sum()) / float(y_test.size(0))
-                print('Epoch: ', epoch, '| train loss: %.4f' % loss.data.numpy(), '| test accuracy: %.2f' % accuracy)
+            if i % 10 == 9:
+                print('[%d, %d] loss: %.03f'
+                      % (epoch + 1, i + 1, running_loss / 10))
+                running_loss = 0.0
 
-        print("Epoch:{},loss:{:.5f}".format(epoch,running_loss/len(train_dataloader)))
-
-
-
+        with torch.no_grad():
+            correct = 0
+            total = 0
+            best_acc = 0
+            for data in test_dataloader:
+                image, label = data
+                image = image.transpose(1, 3).unsqueeze(1).type(torch.FloatTensor)
+                image, label = Variable(image).to(device), Variable(label.long()).to(device)
+                outputs = model(image)
+                _, predicted = torch.max(outputs.data, 1)
+                total += label.size(0)
+                correct += (predicted == label).sum()
+            current_acc = (100 * correct / total)
+            print('第%d个epoch的识别准确率为：%d%%' % (epoch + 1, current_acc))
+        if(current_acc > best_acc):
+            best_acc = current_acc
+            print('Save the best model.')
+            torch.save(model.state_dict(), 'FDSSN.pth')
 
 
 
